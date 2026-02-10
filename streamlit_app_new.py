@@ -291,27 +291,27 @@ def predict_from_features_row(feature_row):
         categorical_cols = feature_row.select_dtypes(include=['object']).columns
         feature_row = pd.get_dummies(feature_row, columns=categorical_cols, drop_first=True, dtype=int)
         
+        # CRITICAL: Do Feature Engineering BEFORE scaling (must match training pipeline!)
+        feature_row['TotalSF'] = feature_row['1stFlrSF'] + feature_row['2ndFlrSF'] + feature_row['TotalBsmtSF']
+        feature_row['TotalBath'] = feature_row['FullBath'] + feature_row['HalfBath'] + feature_row['BsmtFullBath'] + feature_row['BsmtHalfBath']
+        feature_row['TotalPorchSF'] = (
+            feature_row['WoodDeckSF'] + feature_row['OpenPorchSF'] + 
+            feature_row['EnclosedPorch'] + feature_row['3SsnPorch'] + 
+            feature_row['ScreenPorch']
+        )
+        feature_row['QualityCond'] = feature_row['OverallQual'] * feature_row['OverallCond']
+        feature_row['BsmtFinishedRatio'] = (feature_row['BsmtFinSF1'] + feature_row['BsmtFinSF2']) / (feature_row['TotalBsmtSF'] + 1e-8)
+        feature_row['AreaPerRoom'] = feature_row['GrLivArea'] / (feature_row['TotRmsAbvGrd'] + 1e-8)
+        feature_row['TotalRooms'] = feature_row['TotRmsAbvGrd'] + feature_row['BedroomAbvGr'] + feature_row['KitchenAbvGr']
+        feature_row['IsRemodeled'] = (feature_row['YearRemodAdd'] != feature_row['YearBuilt']).astype(int)
+        
         expected_cols = scaler.feature_names_in_.tolist()
         X_for_scaler = feature_row.reindex(columns=expected_cols, fill_value=0)
         
-        X_scaled = pd.DataFrame(
-            scaler.transform(X_for_scaler),
-            columns=expected_cols,
-            index=X_for_scaler.index
-        )
-        
-        X_scaled['TotalSF'] = X_scaled['1stFlrSF'] + X_scaled['2ndFlrSF'] + X_scaled['TotalBsmtSF']
-        X_scaled['TotalBath'] = X_scaled['FullBath'] + X_scaled['HalfBath'] + X_scaled['BsmtFullBath'] + X_scaled['BsmtHalfBath']
-        X_scaled['TotalPorchSF'] = (
-            X_scaled['WoodDeckSF'] + X_scaled['OpenPorchSF'] + 
-            X_scaled['EnclosedPorch'] + X_scaled['3SsnPorch'] + 
-            X_scaled['ScreenPorch']
-        )
-        X_scaled['QualityCond'] = X_scaled['OverallQual'] * X_scaled['OverallCond']
-        X_scaled['BsmtFinishedRatio'] = (X_scaled['BsmtFinSF1'] + X_scaled['BsmtFinSF2']) / (X_scaled['TotalBsmtSF'] + 1e-8)
-        X_scaled['AreaPerRoom'] = X_scaled['GrLivArea'] / (X_scaled['TotRmsAbvGrd'] + 1e-8)
-        X_scaled['TotalRooms'] = X_scaled['TotRmsAbvGrd'] + X_scaled['BedroomAbvGr'] + X_scaled['KitchenAbvGr']
-        X_scaled['IsRemodeled'] = (X_scaled['YearRemodAdd'] != X_scaled['YearBuilt']).astype(int)
+        # Now scale the features (including engineered features)
+        numerical_cols = X_for_scaler.select_dtypes(include=['int64', 'float64']).columns.tolist()
+        X_scaled = X_for_scaler.copy()
+        X_scaled[numerical_cols] = scaler.transform(X_for_scaler[numerical_cols])
         
         Xs = X_scaled[feature_names]  
         
@@ -502,11 +502,6 @@ with tab1:
     else:
         st.success(f"Model loaded: {len(feature_names)} features")
 
-        show_engineered = st.checkbox(
-            "Show engineered/logic features too (e.g., TotalSF / HasGarage)",
-            value=True
-        )
-
         # Form for all features
         with st.form("all_features_form", clear_on_submit=False):
 
@@ -519,12 +514,6 @@ with tab1:
                 if not feats:
                     continue
 
-                # hide engineered if toggle off
-                if not show_engineered:
-                    feats = [f for f in feats if f not in ENGINEERED_SET]
-                    if not feats:
-                        continue
-
                 # Display category title
                 st.markdown(f"#### {group_name}")
 
@@ -533,16 +522,14 @@ with tab1:
                 for i, feat in enumerate(feats):
                     with cols[i % 3]:
                         spec = infer_spec(feat)
-
-                        # nicer defaults
-                        if feat == "OverallQual":
-                            spec.update({"type": "int", "min": 1, "max": 10, "step": 1, "default": 7})
-                        elif feat == "OverallCond":
-                            spec.update({"type": "int", "min": 1, "max": 10, "step": 1, "default": 5})
-                        elif feat in {"YearBuilt", "YearRemodAdd", "GarageYrBlt"}:
-                            spec.update({"type": "int", "min": 1870, "max": 2025, "step": 1, "default": 2000})
-                        elif feat.endswith("_Y") or ("_" in feat and feat not in {"1stFlrSF", "2ndFlrSF", "3SsnPorch"}):
-                            spec.update({"type": "select", "options": [0, 1], "default": 0})
+                        
+                        # Set all defaults to 0
+                        if spec["type"] == "select":
+                            spec["default"] = 0
+                        elif spec["type"] == "int":
+                            spec["default"] = 0
+                        else:  # float
+                            spec["default"] = 0.0
 
                         user_values[feat] = render_feature_input(feat, spec)
 
@@ -571,11 +558,9 @@ with tab1:
                 st.markdown(
                     f"""
                     <div class="prediction-box">
-                        <div class="muted">Estimated House Price</div>
                         <div style="font-size: 3rem; font-weight: 900; margin: 8px 0;">
                             ${price:,.2f}
                         </div>
-                        <div class="muted">User-provided ALL model features</div>
                     </div>
                     """,
                     unsafe_allow_html=True
