@@ -79,8 +79,6 @@ FEATURE_GROUPS = {
     "Quality & Condition": [
         "OverallQual",
         "OverallCond",
-        "ExterQual_TA",
-        "QualityArea",
         "QualityCond",
     ],
 
@@ -96,6 +94,7 @@ FEATURE_GROUPS = {
         "2ndFlrSF",
         "AreaPerRoom",
         "TotalSF",
+        "TotalBath",
     ],
 
     "Basement": [
@@ -103,6 +102,7 @@ FEATURE_GROUPS = {
         "BsmtFinSF1",
         "BsmtUnfSF",
         "BsmtFinishedRatio",
+        "BsmtQual_Gd",
     ],
 
     "Garage": [
