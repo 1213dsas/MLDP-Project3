@@ -84,7 +84,7 @@ div[data-testid="stFormSubmitButton"] > button:active {
     unsafe_allow_html=True,
 )
 
-st.markdown('<div class="main-header">🏠 House Price Predictor</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">House Price Predictor</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Aligned preprocessing pipeline (same as your notebook)</div>', unsafe_allow_html=True)
 
 
@@ -92,7 +92,6 @@ FEATURE_GROUPS = {
     "Quality & Condition": [
         "OverallQual",
         "OverallCond",
-        "QualityCond",
     ],
     "Year & Age": [
         "YearBuilt",
@@ -105,17 +104,12 @@ FEATURE_GROUPS = {
         "1stFlrSF",
         "2ndFlrSF",
         "TotRmsAbvGrd",
-        "AreaPerRoom",
-        "TotalSF",
-        "TotalBath",
-        "TotalRooms",
     ],
     "Basement": [
         "TotalBsmtSF",
         "BsmtFinSF1",
         "BsmtFinSF2",
         "BsmtUnfSF",
-        "BsmtFinishedRatio",
     ],
     "Garage": [
         "GarageCars",
@@ -130,12 +124,10 @@ FEATURE_GROUPS = {
         "EnclosedPorch",
         "3SsnPorch",
         "ScreenPorch",
-        "TotalPorchSF",
     ],
     "Other": [
         "MasVnrArea",
         "CentralAir_Y",
-        "IsRemodeled",
         "FullBath",
         "HalfBath",
         "BsmtFullBath",
@@ -189,25 +181,82 @@ def infer_spec(feat: str):
     if feat.startswith("Has") or feat in {"IsRemodeled"}:
         return {"type": "select", "options": [0, 1], "default": 1}
 
+    # Text display for specific binary features
+    if feat == "GarageType_Detchd":
+        return {"type": "select", "options": ["No", "Yes"], "default": "Yes", "map": {"No": 0, "Yes": 1}}
+    if feat == "CentralAir_Y":
+        return {"type": "select", "options": ["No", "Yes"], "default": "Yes", "map": {"No": 0, "Yes": 1}}
+
     if "_" in feat and feat not in {"1stFlrSF", "2ndFlrSF", "3SsnPorch"}:
         return {"type": "select", "options": [0, 1], "default": 1}
 
-    if feat in {"YearBuilt", "YearRemodAdd", "GarageYrBlt"}:
-        return {"type": "int", "step": 1, "default": 1800}
+    if feat in {"YearBuilt", "YearRemodAdd"}:
+        return {"type": "int", "min": 1850, "step": 1, "default": 2000}
+    
+    if feat == "GarageYrBlt":
+        return {"type": "int", "min": 1850, "step": 1, "default": 2000}
 
     if feat == "MoSold":
-        return {"type": "int",  "step": 1, "default": 1}
+        return {"type": "int", "min": 1, "step": 1, "default": 1}
+    
+    # Specific defaults for important features
+    if feat == "OverallQual":
+        return {"type": "int", "min": 1, "step": 1, "default": 7}
+    if feat == "OverallCond":
+        return {"type": "int", "min": 1, "step": 1, "default": 7}
+    if feat == "GrLivArea":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 1500.0}
+    if feat == "1stFlrSF":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 1000.0}
+    if feat == "2ndFlrSF":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 500.0}
+    if feat == "TotalBsmtSF":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 1000.0}
+    if feat == "BsmtFinSF1":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 500.0}
+    if feat == "BsmtFinSF2":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 100.0}
+    if feat == "BsmtUnfSF":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 400.0}
+    if feat == "GarageArea":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 400.0}
+    if feat == "LotArea":
+        return {"type": "float", "min": 1.0, "step": 100.0, "default": 8000.0}
+    if feat == "LotFrontage":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 60.0}
+    if feat == "TotRmsAbvGrd":
+        return {"type": "int", "min": 1, "step": 1, "default": 6}
+    if feat == "GarageCars":
+        return {"type": "int", "min": 1, "step": 1, "default": 2}
+    if feat == "FullBath":
+        return {"type": "int", "min": 1, "step": 1, "default": 2}
+    if feat == "HalfBath":
+        return {"type": "int", "min": 1, "step": 1, "default": 1}
+    if feat in ["BsmtFullBath", "BsmtHalfBath"]:
+        return {"type": "int", "min": 1, "step": 1, "default": 1}
+    if feat == "BedroomAbvGr":
+        return {"type": "int", "min": 1, "step": 1, "default": 3}
+    if feat == "KitchenAbvGr":
+        return {"type": "int", "min": 1, "step": 1, "default": 1}
+    if feat == "OpenPorchSF":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 40.0}
+    if feat == "WoodDeckSF":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 50.0}
+    if feat in ["EnclosedPorch", "3SsnPorch", "ScreenPorch"]:
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 10.0}
+    if feat == "MasVnrArea":
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 100.0}
 
     if any(k in f for k in ["qual", "cond", "cars", "rooms", "bedroom", "kitchen", "bath"]):
-        return {"type": "int",  "step": 1, "default": 1}
+        return {"type": "int", "min": 1, "step": 1, "default": 1}
 
     if "ratio" in f:
-        return {"type": "float", "step": 0.01, "default": 1.0}
+        return {"type": "float", "min": 0.01, "step": 0.1, "default": 0.5}
 
     if any(k in f for k in ["area", "sf", "frontage"]):
-        return {"type": "float", "step": 10.0, "default": 1.0}
+        return {"type": "float", "min": 1.0, "step": 10.0, "default": 100.0}
 
-    return {"type": "float", "step": 1.0, "default": 1.0}
+    return {"type": "float", "min": 1.0, "step": 1.0, "default": 1.0}
 
 
 def validate_single_field(feat: str, value, all_values: dict) -> str | None:
@@ -229,14 +278,14 @@ def validate_single_field(feat: str, value, all_values: dict) -> str | None:
     
     # Year validations
     if feat == "YearBuilt":
-        if v < 1800:
-            return f"Too early for {int(v)}. Min: 1800"
+        if v < 1850:
+            return f"Too early for {int(v)}. Min: 1850"
         if v > 2026:
             return f"Future year {int(v)}. Max: 2026"
     
     if feat == "YearRemodAdd":
-        if v < 1800:
-            return f"Too early for {int(v)}. Min: 1800"
+        if v < 1850:
+            return f"Too early for {int(v)}. Min: 1850"
         if v > 2026:
             return f"Future year {int(v)}. Max: 2026"
         yb = all_values.get("YearBuilt", 0)
@@ -244,57 +293,99 @@ def validate_single_field(feat: str, value, all_values: dict) -> str | None:
             return f"Cannot be before YearBuilt ({int(yb)})"
     
     if feat == "GarageYrBlt":
-        if v != 0:
-            if v < 1800:
-                return f"Too early for {int(v)}. Use 0 for no garage or >= 1800"
-            if v > 2026:
-                return f"Future year {int(v)}. Max: 2026"
-            yb = all_values.get("YearBuilt", 0)
-            if yb and v < yb:
-                return f"Cannot be before YearBuilt ({int(yb)})"
+        if v < 1850:
+            return f"Too early for {int(v)}. Min: 1850"
+        if v > 2026:
+            return f"Future year {int(v)}. Max: 2026"
+        yb = all_values.get("YearBuilt", 0)
+        if yb and v < yb:
+            return f"Cannot be before YearBuilt ({int(yb)})"
     
     # MoSold validation
     if feat == "MoSold":
         if not (1 <= v <= 12):
             return f"Must be 1-12"
     
-    # Area validations
+    # Area range validations
     if feat == "GrLivArea":
-        if v <= 0 or v > 10000:
-            return f"Must be 1-10,000 sqft"
+        if v > 10000:
+            return f"Cannot exceed 10,000 sqft"
     
     if feat == "1stFlrSF":
-        if v <= 0 or v > 8000:
-            return f"Must be 1-8,000 sqft"
+        if v > 8000:
+            return f"Cannot exceed 8,000 sqft"
     
     if feat == "TotalBsmtSF":
-        if v < 0 or v > 8000:
-            return f"Must be 0-8,000 sqft"
+        if v > 8000:
+            return f"Cannot exceed 8,000 sqft"
+        # Check consistency with basement components
+        bsmt_fin1 = all_values.get("BsmtFinSF1", 0)
+        bsmt_fin2 = all_values.get("BsmtFinSF2", 0)
+        bsmt_unf = all_values.get("BsmtUnfSF", 0)
+        total_components = bsmt_fin1 + bsmt_fin2 + bsmt_unf
+        if total_components > v + 10:  # Allow small tolerance
+            return f"Total ({v:.0f}) < components ({total_components:.0f})"
     
-    # Non-negative fields
-    nonneg = [
-        "2ndFlrSF", "LotArea", "LotFrontage", "GarageArea", 
-        "WoodDeckSF", "OpenPorchSF", "EnclosedPorch", "3SsnPorch", 
-        "ScreenPorch", "MasVnrArea", "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF"
-    ]
-    if feat in nonneg and v < 0:
-        return f"Cannot be negative"
+    # GarageCars validation
+    if feat == "GarageCars":
+        if v > 10:
+            return f"Too many (max 10)"
+    
+    if feat == "GarageArea":
+        if v > 2000:
+            return f"Cannot exceed 2,000 sqft"
+    
+    # LotArea validation
+    if feat == "LotArea":
+        if v > 100000:
+            return f"Cannot exceed 100,000 sqft"
+    
+    # LotFrontage validation
+    if feat == "LotFrontage":
+        if v > 500:
+            return f"Cannot exceed 500 feet"
+    
+    if feat in ["BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF"]:
+        if v > 5000:
+            return f"Cannot exceed 5,000 sqft"
     
     # Room validations
     if feat == "TotRmsAbvGrd":
-        if v <= 0:
-            return f"Must be at least 1"
+        if v > 50:
+            return f"Too many (max 50)"
     
     if feat == "BedroomAbvGr":
-        if v < 0:
-            return f"Cannot be negative"
         rooms = all_values.get("TotRmsAbvGrd", 999)
         if rooms and v > rooms:
             return f"Cannot exceed TotRmsAbvGrd ({rooms:.0f})"
     
     if feat in ["KitchenAbvGr", "FullBath", "HalfBath", "BsmtFullBath", "BsmtHalfBath"]:
-        if v < 0:
-            return f"Cannot be negative"
+        if v > 10:
+            return f"Too many (max 10)"
+    
+    # 2ndFlrSF should not exceed reasonable limits
+    if feat == "2ndFlrSF":
+        if v > 5000:
+            return f"Cannot exceed 5,000 sqft"
+    
+    # Porch area validations
+    if feat == "WoodDeckSF":
+        if v > 2000:
+            return f"Cannot exceed 2,000 sqft"
+    
+    if feat == "OpenPorchSF":
+        if v > 2000:
+            return f"Cannot exceed 2,000 sqft"
+    
+    porch_fields = ["EnclosedPorch", "3SsnPorch", "ScreenPorch"]
+    if feat in porch_fields:
+        if v > 2000:
+            return f"Cannot exceed 2,000 sqft"
+    
+    # MasVnrArea validation
+    if feat == "MasVnrArea":
+        if v > 2000:
+            return f"Cannot exceed 2,000 sqft"
     
     return None
 
@@ -309,8 +400,13 @@ def render_feature_input(name: str, spec: dict, user_values: dict):
     else:
         current_val = spec.get("default", spec.get(1))
     
-    # Validate current value
-    error_msg = validate_single_field(name, current_val, user_values)
+    # For mapped values, validate the numeric value
+    if "map" in spec and spec["type"] == "select":
+        # Convert display value to numeric for validation
+        numeric_val = spec["map"].get(current_val, current_val)
+        error_msg = validate_single_field(name, numeric_val, user_values)
+    else:
+        error_msg = validate_single_field(name, current_val, user_values)
     
     # Render input
     if spec["type"] == "select":
@@ -318,10 +414,15 @@ def render_feature_input(name: str, spec: dict, user_values: dict):
         default = spec.get("default", options[0])
         idx = options.index(default) if default in options else 0
         val = st.selectbox(name, options=options, index=idx, key=key)
+        # Convert text to numeric if mapping exists
+        if "map" in spec:
+            val = spec["map"][val]
     else:
         is_int = spec["type"] == "int"
+        min_val = spec.get("min", None)
         val = st.number_input(
             name,
+            min_value=min_val,
             value=current_val,
             step=spec["step"],
             format="%d" if is_int else None,
@@ -342,45 +443,51 @@ def build_model_input(feature_names_list: list[str], raw: dict | pd.Series) -> p
     """
     row = raw.to_dict() if isinstance(raw, pd.Series) else dict(raw)
 
-    X = pd.DataFrame([[1.0] * len(feature_names_list)], columns=feature_names_list)
+    X = pd.DataFrame([[0.0] * len(feature_names_list)], columns=feature_names_list)
 
+    # First, copy all direct values
     for k, v in row.items():
         if k in X.columns:
             try:
-                X.loc[1, k] = float(v)
+                X.loc[0, k] = float(v)
             except Exception:
                 pass
 
-    if "QualityCond" in X.columns:
-        X.loc[1, "QualityCond"] = float(row.get("OverallQual", 0)) * float(row.get("OverallCond", 0))
+    # Only calculate engineered features if the necessary raw features exist
+    if "QualityCond" in X.columns and "OverallQual" in row and "OverallCond" in row:
+        X.loc[0, "QualityCond"] = float(row.get("OverallQual", 0)) * float(row.get("OverallCond", 0))
 
-    if "TotalSF" in X.columns:
-        X.loc[1, "TotalSF"] = float(row.get("1stFlrSF", 0)) + float(row.get("2ndFlrSF", 0)) + float(row.get("TotalBsmtSF", 0))
+    if "TotalSF" in X.columns and "1stFlrSF" in row and "2ndFlrSF" in row and "TotalBsmtSF" in row:
+        X.loc[0, "TotalSF"] = float(row.get("1stFlrSF", 0)) + float(row.get("2ndFlrSF", 0)) + float(row.get("TotalBsmtSF", 0))
 
-    if "TotalBath" in X.columns:
-        X.loc[1, "TotalBath"] = (
+    if "TotalBath" in X.columns and any(k in row for k in ["FullBath", "HalfBath", "BsmtFullBath", "BsmtHalfBath"]):
+        X.loc[0, "TotalBath"] = (
             float(row.get("FullBath", 0)) + float(row.get("HalfBath", 0))
             + float(row.get("BsmtFullBath", 0)) + float(row.get("BsmtHalfBath", 0))
         )
 
-    if "TotalPorchSF" in X.columns:
-        X.loc[1, "TotalPorchSF"] = (
+    if "TotalPorchSF" in X.columns and any(k in row for k in ["WoodDeckSF", "OpenPorchSF", "EnclosedPorch", "3SsnPorch", "ScreenPorch"]):
+        X.loc[0, "TotalPorchSF"] = (
             float(row.get("WoodDeckSF", 0)) + float(row.get("OpenPorchSF", 0))
             + float(row.get("EnclosedPorch", 0)) + float(row.get("3SsnPorch", 0)) + float(row.get("ScreenPorch", 0))
         )
 
-    if "BsmtFinishedRatio" in X.columns:
-        bsmt_fin = float(row.get("BsmtFinSF1", 0)) + float(row.get("BsmtFinSF2", 0))
-        X.loc[1, "BsmtFinishedRatio"] = bsmt_fin / (float(row.get("TotalBsmtSF", 0)) + 1e-8)
+    if "BsmtFinishedRatio" in X.columns and "BsmtFinSF1" in row and "TotalBsmtSF" in row:
+        total_bsmt = float(row.get("TotalBsmtSF", 0))
+        if total_bsmt > 0:
+            bsmt_fin = float(row.get("BsmtFinSF1", 0)) + float(row.get("BsmtFinSF2", 0))
+            X.loc[0, "BsmtFinishedRatio"] = bsmt_fin / total_bsmt
 
-    if "AreaPerRoom" in X.columns:
-        X.loc[1, "AreaPerRoom"] = float(row.get("GrLivArea", 0)) / (float(row.get("TotRmsAbvGrd", 0)) + 1e-8)
+    if "AreaPerRoom" in X.columns and "GrLivArea" in row and "TotRmsAbvGrd" in row:
+        tot_rooms = float(row.get("TotRmsAbvGrd", 0))
+        if tot_rooms > 0:
+            X.loc[0, "AreaPerRoom"] = float(row.get("GrLivArea", 0)) / tot_rooms
 
-    if "TotalRooms" in X.columns:
-        X.loc[1, "TotalRooms"] = float(row.get("TotRmsAbvGrd", 0)) + float(row.get("BedroomAbvGr", 0)) + float(row.get("KitchenAbvGr", 0))
+    if "TotalRooms" in X.columns and any(k in row for k in ["TotRmsAbvGrd", "BedroomAbvGr", "KitchenAbvGr"]):
+        X.loc[0, "TotalRooms"] = float(row.get("TotRmsAbvGrd", 0)) + float(row.get("BedroomAbvGr", 0)) + float(row.get("KitchenAbvGr", 0))
 
-    if "IsRemodeled" in X.columns:
-        X.loc[1, "IsRemodeled"] = 1.0 if float(row.get("YearRemodAdd", 0)) != float(row.get("YearBuilt", 0)) else 0.0
+    if "IsRemodeled" in X.columns and "YearRemodAdd" in row and "YearBuilt" in row:
+        X.loc[0, "IsRemodeled"] = 1.0 if float(row.get("YearRemodAdd", 0)) != float(row.get("YearBuilt", 0)) else 0.0
 
     return X
 
@@ -430,8 +537,8 @@ def validate_all_inputs(user_values: dict) -> list[str]:
     """
     errors = []
     
-    # Required fields
-    required = ["OverallQual", "OverallCond", "GrLivArea", "1stFlrSF", "TotalBsmtSF", "YearBuilt"]
+    # Required fields (only those in the 25 features)
+    required = ["OverallQual", "GrLivArea", "1stFlrSF", "TotalBsmtSF", "YearBuilt"]
     missing = [r for r in required if r not in user_values]
     if missing:
         errors.append(f"Missing required inputs: {', '.join(missing)}")
@@ -450,19 +557,46 @@ if model is None or scaler is None or not feature_names:
              "- house_price_model.pkl\n- house_scaler.pkl\n- feature_names.txt\n- skewed_features.pkl")
     st.stop()
 
-st.success(f"Model loaded: {len(feature_names)} features")
+st.success(f"Model loaded: {len(feature_names)} features (Top 25)")
 
+# Top 25 features that the model uses
+TOP_25_FEATURES = set(feature_names)
+
+# Base features needed to calculate the Top 25 engineered features
+# These MUST be collected from the user even if not in Top 25
 NEEDED_BASE = {
-    "OverallQual", "OverallCond", "GrLivArea",
+    # For QualityCond = OverallQual × OverallCond
+    "OverallQual", "OverallCond",
+    
+    # For TotalSF = 1stFlrSF + 2ndFlrSF + TotalBsmtSF
     "1stFlrSF", "2ndFlrSF", "TotalBsmtSF",
+    
+    # For TotalBath = FullBath + HalfBath + BsmtFullBath + BsmtHalfBath
     "FullBath", "HalfBath", "BsmtFullBath", "BsmtHalfBath",
+    
+    # For TotalPorchSF = WoodDeckSF + OpenPorchSF + EnclosedPorch + 3SsnPorch + ScreenPorch
     "WoodDeckSF", "OpenPorchSF", "EnclosedPorch", "3SsnPorch", "ScreenPorch",
+    
+    # For BsmtFinishedRatio = (BsmtFinSF1 + BsmtFinSF2) / TotalBsmtSF
     "BsmtFinSF1", "BsmtFinSF2",
-    "TotRmsAbvGrd", "BedroomAbvGr", "KitchenAbvGr",
+    
+    # For AreaPerRoom = GrLivArea / TotRmsAbvGrd
+    "GrLivArea", "TotRmsAbvGrd",
+    
+    # For TotalRooms = TotRmsAbvGrd + BedroomAbvGr + KitchenAbvGr
+    "BedroomAbvGr", "KitchenAbvGr",
+    
+    # For IsRemodeled = (YearRemodAdd != YearBuilt)
     "YearBuilt", "YearRemodAdd",
+    
+    # Other direct features in Top 25
+    "BsmtUnfSF", "LotArea", "LotFrontage", "MasVnrArea",
+    "GarageCars", "GarageArea", "GarageYrBlt", "GarageType_Detchd",
+    "CentralAir_Y", "MoSold",
 }
 
-DISPLAY_SET = set(feature_names) | NEEDED_BASE
+# Display ALL base features needed for Top 25 calculation
+DISPLAY_SET = TOP_25_FEATURES | NEEDED_BASE
 
 with st.form("all_features_form", clear_on_submit=False):
     user_values = {}
@@ -489,7 +623,9 @@ if submitted:
     errors = validate_all_inputs(user_values)
 
     if errors:
-        st.error("Please fix the validation errors shown in red above before predicting.")
+        st.error("Validation Errors Found:")
+        for error in errors:
+            st.error(f"• {error}")
         st.stop()
         
     price = predict_from_raw_row(model, scaler, feature_names, skewed_features, raw=user_values)
