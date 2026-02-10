@@ -4,6 +4,7 @@ import numpy as np
 import joblib
 from pathlib import Path
 import warnings
+import traceback
 
 warnings.filterwarnings("ignore")
 
@@ -86,6 +87,7 @@ FEATURE_GROUPS = {
         "YearBuilt",
         "YearRemodAdd",
         "GarageYrBlt",
+        "MoSold",
     ],
 
     "Living Area": [
@@ -101,25 +103,25 @@ FEATURE_GROUPS = {
         "TotalBsmtSF",
         "BsmtFinSF1",
         "BsmtUnfSF",
-        "BsmtFinishedRatio",
-        "BsmtQual_Gd",
     ],
 
     "Garage": [
         "GarageCars",
         "GarageArea",
+        "GarageType_Detchd",
     ],
 
     "Lot & Outdoor": [
         "LotArea",
         "LotFrontage",
         "OpenPorchSF",
+        "WoodDeckSF",
         "TotalPorchSF",
     ],
 
-    "Binary / One-Hot": [
+    "Other": [
+        "MasVnrArea",
         "CentralAir_Y",
-        "MSZoning_RM",
     ],
 }
 
@@ -241,9 +243,9 @@ def build_model_input(feature_names: list[str], raw: dict | pd.Series) -> pd.Dat
     if "TotalBath" in X.columns:
         X.loc[0, "TotalBath"] = (
             float(row.get("FullBath", 0))
-            + 0.5 * float(row.get("HalfBath", 0))
+            + float(row.get("HalfBath", 0))
             + float(row.get("BsmtFullBath", 0))
-            + 0.5 * float(row.get("BsmtHalfBath", 0))
+            + float(row.get("BsmtHalfBath", 0))
         )
 
     if "TotalPorchSF" in X.columns:
@@ -257,10 +259,9 @@ def build_model_input(feature_names: list[str], raw: dict | pd.Series) -> pd.Dat
 
     if "BsmtFinishedRatio" in X.columns:
         bsmt_fin = float(row.get("BsmtFinSF1", 0)) + float(row.get("BsmtFinSF2", 0))
-        X.loc[0, "BsmtFinishedRatio"] = bsmt_fin / (float(row.get("TotalBsmtSF", 0)) + 1.0)
+        X.loc[0, "BsmtFinishedRatio"] = bsmt_fin / (float(row.get("TotalBsmtSF", 0)) + 1e-8)
 
-    if "AreaPerRoom" in X.columns:
-        X.loc[0, "AreaPerRoom"] = float(row.get("GrLivArea", 0)) / (float(row.get("TotRmsAbvGrd", 0)) + 1.0)
+    X.loc[0, "AreaPerRoom"] = float(row.get("GrLivArea", 0)) / (float(row.get("TotRmsAbvGrd", 0)) + 1e-8)
 
     if "HasGarage" in X.columns:
         X.loc[0, "HasGarage"] = 1.0 if float(row.get("GarageArea", 0)) > 0 else 0.0
@@ -280,56 +281,41 @@ def build_model_input(feature_names: list[str], raw: dict | pd.Series) -> pd.Dat
     return X
 
 
-def predict_from_features_row(feature_row):
-
+def predict_from_features_row(feature_row: pd.DataFrame):
     try:
-        skewed_features = joblib.load('skewed_features.pkl')
+        # 1) log1p skewed
         for col in skewed_features:
             if col in feature_row.columns:
                 feature_row[col] = np.log1p(feature_row[col])
-        
-        categorical_cols = feature_row.select_dtypes(include=['object']).columns
-        feature_row = pd.get_dummies(feature_row, columns=categorical_cols, drop_first=True, dtype=int)
-        
-        # CRITICAL: Do Feature Engineering BEFORE scaling (must match training pipeline!)
-        feature_row['TotalSF'] = feature_row['1stFlrSF'] + feature_row['2ndFlrSF'] + feature_row['TotalBsmtSF']
-        feature_row['TotalBath'] = feature_row['FullBath'] + feature_row['HalfBath'] + feature_row['BsmtFullBath'] + feature_row['BsmtHalfBath']
-        feature_row['TotalPorchSF'] = (
-            feature_row['WoodDeckSF'] + feature_row['OpenPorchSF'] + 
-            feature_row['EnclosedPorch'] + feature_row['3SsnPorch'] + 
-            feature_row['ScreenPorch']
-        )
-        feature_row['QualityCond'] = feature_row['OverallQual'] * feature_row['OverallCond']
-        feature_row['BsmtFinishedRatio'] = (feature_row['BsmtFinSF1'] + feature_row['BsmtFinSF2']) / (feature_row['TotalBsmtSF'] + 1e-8)
-        feature_row['AreaPerRoom'] = feature_row['GrLivArea'] / (feature_row['TotRmsAbvGrd'] + 1e-8)
-        feature_row['TotalRooms'] = feature_row['TotRmsAbvGrd'] + feature_row['BedroomAbvGr'] + feature_row['KitchenAbvGr']
-        feature_row['IsRemodeled'] = (feature_row['YearRemodAdd'] != feature_row['YearBuilt']).astype(int)
-        
+
+        # 2) one-hot if needed
+        cat_cols = feature_row.select_dtypes(include=["object"]).columns
+        if len(cat_cols) > 0:
+            feature_row = pd.get_dummies(feature_row, columns=cat_cols, drop_first=True, dtype=int)
+
+        # 3) align to scaler expected cols
         expected_cols = scaler.feature_names_in_.tolist()
         X_for_scaler = feature_row.reindex(columns=expected_cols, fill_value=0)
-        
-        # Now scale the features (including engineered features)
-        numerical_cols = X_for_scaler.select_dtypes(include=['int64', 'float64']).columns.tolist()
-        X_scaled = X_for_scaler.copy()
-        X_scaled[numerical_cols] = scaler.transform(X_for_scaler[numerical_cols])
-        
-        Xs = X_scaled[feature_names]  
-        
+
+        # 4) scale ALL columns at once
+        X_scaled_all = pd.DataFrame(
+            scaler.transform(X_for_scaler),
+            columns=expected_cols,
+            index=feature_row.index
+        )
+
+        # 5) select model features
+        Xs = X_scaled_all.reindex(columns=feature_names, fill_value=0)
+
         pred_log = model.predict(Xs)
-        pred_price = np.exp(pred_log)[0]
-        
-        return pred_price
-        
+        return float(np.exp(pred_log)[0])
+
     except Exception as e:
         st.error(f"Prediction error: {str(e)}")
         st.error(traceback.format_exc())
         return None
 
-
 def predict_from_raw_row(model, scaler, feature_names, skewed_features, raw: dict | pd.Series) -> float | None:
-    """
-    Predict when user provides RAW features and we auto-engineer needed ones.
-    """
     try:
         X = build_model_input(feature_names, raw)
 
@@ -420,12 +406,10 @@ def preprocess_for_model(df_raw, high_skew_features, scaler, X_train_cols, drop_
     if drop_id and "Id" in df.columns:
         df = df.drop(columns=["Id"])
 
-    # Drop high-missing columns
     for col in ["PoolQC", "MiscFeature", "Alley", "Fence"]:
         if col in df.columns:
             df = df.drop(columns=[col])
 
-    # Missing values
     if "LotFrontage" in df.columns and "Neighborhood" in df.columns:
         df["LotFrontage"] = df.groupby("Neighborhood")["LotFrontage"].transform(lambda x: x.fillna(x.median()))
 
@@ -456,35 +440,41 @@ def preprocess_for_model(df_raw, high_skew_features, scaler, X_train_cols, drop_
         else:
             df[col] = df[col].fillna(0)
 
-    # Feature engineering
-    df["TotalSF"] = df["1stFlrSF"] + df["2ndFlrSF"] + df["TotalBsmtSF"]
-    df["TotalBath"] = df["FullBath"] + 0.5 * df["HalfBath"] + df["BsmtFullBath"] + 0.5 * df["BsmtHalfBath"]
-    df["TotalPorchSF"] = df["WoodDeckSF"] + df["OpenPorchSF"] + df["EnclosedPorch"] + df["3SsnPorch"] + df["ScreenPorch"]
-    df["HasFireplace"] = (df["Fireplaces"] > 0).astype(int)
-    df["Has2ndFloor"] = (df["2ndFlrSF"] > 0).astype(int)
-    df["HasGarage"] = (df["GarageArea"] > 0).astype(int)
-    df["QualityArea"] = df["OverallQual"] * df["GrLivArea"]
-    df["QualityCond"] = df["OverallQual"] * df["OverallCond"]
-    df["BsmtFinishedRatio"] = (df["BsmtFinSF1"] + df["BsmtFinSF2"]) / (df["TotalBsmtSF"] + 1)
-    df["AreaPerRoom"] = df["GrLivArea"] / (df["TotRmsAbvGrd"] + 1)
-    df["TotalRooms"] = df["TotRmsAbvGrd"] + df["BedroomAbvGr"] + df["KitchenAbvGr"]
-    df["IsRemodeled"] = (df["YearRemodAdd"] != df["YearBuilt"]).astype(int)
-    df["HasPool"] = (df["PoolArea"] > 0).astype(int)
-    df["HasBsmt"] = (df["TotalBsmtSF"] > 0).astype(int)
-
-    # log1p skewed
     for col in high_skew_features:
         if col in df.columns:
             df[col] = np.log1p(df[col])
 
-    # one-hot
+    df["TotalSF"] = df["1stFlrSF"] + df["2ndFlrSF"] + df["TotalBsmtSF"]
+
+    # ipynb: HalfBath 没有 *0.5
+    df["TotalBath"] = df["FullBath"] + df["HalfBath"] + df["BsmtFullBath"] + df["BsmtHalfBath"]
+
+    df["TotalPorchSF"] = df["WoodDeckSF"] + df["OpenPorchSF"] + df["EnclosedPorch"] + df["3SsnPorch"] + df["ScreenPorch"]
+
+    df["QualityCond"] = df["OverallQual"] * df["OverallCond"]
+
+    df["BsmtFinishedRatio"] = (df["BsmtFinSF1"] + df["BsmtFinSF2"]) / (df["TotalBsmtSF"] + 1e-8)
+    df["AreaPerRoom"] = df["GrLivArea"] / (df["TotRmsAbvGrd"] + 1e-8)
+
+    df["TotalRooms"] = df["TotRmsAbvGrd"] + df["BedroomAbvGr"] + df["KitchenAbvGr"]
+    df["IsRemodeled"] = (df["YearRemodAdd"] != df["YearBuilt"]).astype(int)
+
+    # 5) One-hot
     cat_cols = df.select_dtypes(include=["object"]).columns
     df_encoded = pd.get_dummies(df, columns=cat_cols, drop_first=True, dtype=int)
 
+    # 6) Align to scaler expected columns
     expected = scaler.feature_names_in_.tolist()
     X_for_scaler = df_encoded.reindex(columns=expected, fill_value=0)
-    X_scaled_all = pd.DataFrame(scaler.transform(X_for_scaler), columns=expected, index=df.index)
 
+    # 7) Scale（scaler 是 fit 在 expected 这些列上）
+    X_scaled_all = pd.DataFrame(
+        scaler.transform(X_for_scaler),
+        columns=expected,
+        index=df.index
+    )
+
+    # 8) Select top 25 columns
     X_final = X_scaled_all.reindex(columns=X_train_cols, fill_value=0)
     return X_final
 
@@ -550,7 +540,7 @@ with tab1:
                     except Exception:
                         X.loc[0, feat] = 0.0
 
-            price = predict_from_features_row(X)
+            price = predict_from_raw_row(model, scaler, feature_names, skewed_features, raw=user_values)
 
             if price is None:
                 st.error("Prediction failed. Check scaler/model/feature alignment.")
