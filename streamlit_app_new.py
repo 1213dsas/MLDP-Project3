@@ -124,9 +124,6 @@ FEATURE_GROUPS = {
 }
 
 
-# ============================================================
-# Load model assets
-# ============================================================
 @st.cache_resource
 def load_model_assets():
     model_path = Path("house_price_model.pkl")
@@ -164,9 +161,6 @@ def load_model_assets():
 model, scaler, feature_names, skewed_features = load_model_assets()
 
 
-# ============================================================
-# Mock houses
-# ============================================================
 @st.cache_data
 def get_mock_houses():
     return pd.DataFrame(
@@ -210,9 +204,6 @@ def get_mock_houses():
 mock_houses = get_mock_houses()
 
 
-# ============================================================
-# Unified prediction helpers
-# ============================================================
 ENGINEERED_SET = {
     "TotalSF", "QualityArea", "QualityCond", "TotalBath", "TotalPorchSF",
     "BsmtFinishedRatio", "AreaPerRoom", "TotalRooms",
@@ -367,10 +358,6 @@ def add_predicted_prices(houses_df: pd.DataFrame, _model, _scaler, _feature_name
     )
     return df
 
-
-# ============================================================
-# Dynamic UI schema (auto detect dropdown vs number_input)
-# ============================================================
 def infer_spec(feat: str):
     """
     Infer input widget type.
@@ -420,9 +407,6 @@ def render_feature_input(name: str, spec: dict):
     )
 
 
-# ============================================================
-# Train preprocess (same idea as your pipeline)
-# ============================================================
 def preprocess_for_model(df_raw, high_skew_features, scaler, X_train_cols, drop_id=True):
     df = df_raw.copy()
 
@@ -595,7 +579,6 @@ with tab1:
                 with st.expander("View all feature values used"):
                     st.dataframe(X.T, use_container_width=True)
 
-
 with tab2:
     st.markdown("### Training Data Analysis")
 
@@ -609,6 +592,8 @@ with tab2:
             # Remove outliers (same as in good.ipynb Cell 57)
             outliers_mask = (train_df['GrLivArea'] > 4000) & (train_df['SalePrice'] < 300000)
             outliers = train_df[outliers_mask]
+            if len(outliers) > 0:
+                st.info(f"Removed {len(outliers)} outliers (GrLivArea > 4000 & SalePrice < 300000) - same as training")
             train_df = train_df[~outliers_mask].copy()
 
             y_actual = train_df["SalePrice"].values
