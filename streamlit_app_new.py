@@ -1,3 +1,4 @@
+import traceback
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -319,33 +320,49 @@ def predict_from_features_row(model, scaler, feature_names, skewed_features, X_r
         return None
 
 
-def predict_from_raw_row(model, scaler, feature_names, skewed_features, raw: dict | pd.Series) -> float | None:
-    """
-    Predict when user provides RAW features and we auto-engineer needed ones.
-    """
+def predict_from_features_row(feature_row):
+
     try:
-        X = build_model_input(feature_names, raw)
-
-        for f in skewed_features:
-            if f in X.columns:
-                X.loc[0, f] = np.log1p(X.loc[0, f])
-
-        # Align to scaler's features, then scale, then select model features
-        if scaler is not None:
-            scaler_features = scaler.feature_names_in_.tolist()
-            X_for_scaler = X.reindex(columns=scaler_features, fill_value=0)
-            X_scaled_all = pd.DataFrame(scaler.transform(X_for_scaler), 
-                                       columns=scaler_features, 
-                                       index=X.index)
-            Xs = X_scaled_all[feature_names]
-        else:
-            Xs = X
-            
-        pred_log = float(model.predict(Xs)[0])
-        # Use exp not expm1 since target is log not log1p
-        return float(np.exp(pred_log))
+        skewed_features = joblib.load('skewed_features.pkl')
+        for col in skewed_features:
+            if col in feature_row.columns:
+                feature_row[col] = np.log1p(feature_row[col])
+        
+        categorical_cols = feature_row.select_dtypes(include=['object']).columns
+        feature_row = pd.get_dummies(feature_row, columns=categorical_cols, drop_first=True, dtype=int)
+        
+        expected_cols = scaler.feature_names_in_.tolist()
+        X_for_scaler = feature_row.reindex(columns=expected_cols, fill_value=0)
+        
+        X_scaled = pd.DataFrame(
+            scaler.transform(X_for_scaler),
+            columns=expected_cols,
+            index=X_for_scaler.index
+        )
+        
+        X_scaled['TotalSF'] = X_scaled['1stFlrSF'] + X_scaled['2ndFlrSF'] + X_scaled['TotalBsmtSF']
+        X_scaled['TotalBath'] = X_scaled['FullBath'] + X_scaled['HalfBath'] + X_scaled['BsmtFullBath'] + X_scaled['BsmtHalfBath']
+        X_scaled['TotalPorchSF'] = (
+            X_scaled['WoodDeckSF'] + X_scaled['OpenPorchSF'] + 
+            X_scaled['EnclosedPorch'] + X_scaled['3SsnPorch'] + 
+            X_scaled['ScreenPorch']
+        )
+        X_scaled['QualityCond'] = X_scaled['OverallQual'] * X_scaled['OverallCond']
+        X_scaled['BsmtFinishedRatio'] = (X_scaled['BsmtFinSF1'] + X_scaled['BsmtFinSF2']) / (X_scaled['TotalBsmtSF'] + 1e-8)
+        X_scaled['AreaPerRoom'] = X_scaled['GrLivArea'] / (X_scaled['TotRmsAbvGrd'] + 1e-8)
+        X_scaled['TotalRooms'] = X_scaled['TotRmsAbvGrd'] + X_scaled['BedroomAbvGr'] + X_scaled['KitchenAbvGr']
+        X_scaled['IsRemodeled'] = (X_scaled['YearRemodAdd'] != X_scaled['YearBuilt']).astype(int)
+        
+        Xs = X_scaled[feature_names]  
+        
+        pred_log = model.predict(Xs)
+        pred_price = np.exp(pred_log)[0]
+        
+        return pred_price
+        
     except Exception as e:
-        st.warning(f"Prediction error: {str(e)}")
+        st.error(f"Prediction error: {str(e)}")
+        st.error(traceback.format_exc())
         return None
 
 
@@ -353,7 +370,7 @@ def predict_from_raw_row(model, scaler, feature_names, skewed_features, raw: dic
 def add_predicted_prices(houses_df: pd.DataFrame, _model, _scaler, _feature_names, _skewed_features):
     df = houses_df.copy()
     df["PredictedPrice"] = df.apply(
-        lambda r: predict_from_raw_row(_model, _scaler, _feature_names, _skewed_features, r),
+        lambda r: predict_from_features_row(_model, _scaler, _feature_names, _skewed_features, r),
         axis=1,
     )
     return df
