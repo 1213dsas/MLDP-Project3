@@ -1,4 +1,3 @@
-import traceback
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -281,45 +280,6 @@ def build_model_input(feature_names: list[str], raw: dict | pd.Series) -> pd.Dat
     return X
 
 
-def predict_from_features_row(model, scaler, feature_names, skewed_features, X_row: pd.DataFrame) -> float | None:
-    """
-    Predict when user directly provides ALL model features (already aligned to feature_names).
-    """
-    try:
-        X = X_row.copy()
-
-        # Apply log1p transform to skewed features
-        for f in skewed_features:
-            if f in X.columns:
-                X.loc[0, f] = np.log1p(X.loc[0, f])
-
-        # CRITICAL: Align to scaler's expected features first (before scaling)
-        if scaler is not None:
-            # Get the features scaler expects (all features including one-hot encoded)
-            scaler_features = scaler.feature_names_in_.tolist()
-            # Reindex to match scaler's expected features, fill missing with 0
-            X_for_scaler = X.reindex(columns=scaler_features, fill_value=0)
-            # Scale using all features
-            X_scaled_all = pd.DataFrame(scaler.transform(X_for_scaler), 
-                                       columns=scaler_features, 
-                                       index=X.index)
-            # Select only the features the model needs
-            Xs = X_scaled_all[feature_names]
-        else:
-            Xs = X
-        
-        # Predict (output is log price)
-        pred_log = float(model.predict(Xs)[0])
-        
-        # Convert back from log to actual price using exp (not expm1, since target is log not log1p)
-        return float(np.exp(pred_log))
-    except Exception as e:
-        st.error(f"Prediction error: {str(e)}")
-        import traceback
-        st.code(traceback.format_exc())
-        return None
-
-
 def predict_from_features_row(feature_row):
 
     try:
@@ -366,11 +326,41 @@ def predict_from_features_row(feature_row):
         return None
 
 
+def predict_from_raw_row(model, scaler, feature_names, skewed_features, raw: dict | pd.Series) -> float | None:
+    """
+    Predict when user provides RAW features and we auto-engineer needed ones.
+    """
+    try:
+        X = build_model_input(feature_names, raw)
+
+        for f in skewed_features:
+            if f in X.columns:
+                X.loc[0, f] = np.log1p(X.loc[0, f])
+
+        # Align to scaler's features, then scale, then select model features
+        if scaler is not None:
+            scaler_features = scaler.feature_names_in_.tolist()
+            X_for_scaler = X.reindex(columns=scaler_features, fill_value=0)
+            X_scaled_all = pd.DataFrame(scaler.transform(X_for_scaler), 
+                                       columns=scaler_features, 
+                                       index=X.index)
+            Xs = X_scaled_all[feature_names]
+        else:
+            Xs = X
+            
+        pred_log = float(model.predict(Xs)[0])
+        # Use exp not expm1 since target is log not log1p
+        return float(np.exp(pred_log))
+    except Exception as e:
+        st.warning(f"Prediction error: {str(e)}")
+        return None
+
+
 @st.cache_data
 def add_predicted_prices(houses_df: pd.DataFrame, _model, _scaler, _feature_names, _skewed_features):
     df = houses_df.copy()
     df["PredictedPrice"] = df.apply(
-        lambda r: predict_from_features_row(_model, _scaler, _feature_names, _skewed_features, r),
+        lambda r: predict_from_features_row(r),
         axis=1,
     )
     return df
@@ -573,7 +563,7 @@ with tab1:
                     except Exception:
                         X.loc[0, feat] = 0.0
 
-            price = predict_from_features_row(model, scaler, feature_names, skewed_features, X)
+            price = predict_from_features_row(X)
 
             if price is None:
                 st.error("Prediction failed. Check scaler/model/feature alignment.")
